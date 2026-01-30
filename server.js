@@ -141,25 +141,9 @@ const adminGuard = (req, res, next) => {
 const renderUserPage = ({ userId, stamps }) => {
   const total = 13;
   const safeStamps = clampStamps(stamps);
-  const stampItems = Array.from({ length: total }, (_, index) => {
-    const filled = index < safeStamps;
-    return `<li class="stamp ${filled ? "stamp--filled" : ""}" aria-hidden="true"></li>`;
+  const ringDots = Array.from({ length: total }, (_, index) => {
+    return `<span class="ring-dot" style="--index:${index};" aria-hidden="true"></span>`;
   }).join("");
-
-  const milestoneMessage =
-    safeStamps >= total
-      ? "<p class=\"milestone\">節目を迎えました</p>"
-      : "<p class=\"milestone muted\">静かに積み重ねています</p>";
-
-  const showResetButton = safeStamps >= total;
-  const resetButton = showResetButton
-    ? `<div class="reset-wrapper">
-        <button class="reset-button" type="button" data-user="${userId}">
-          果報をうける
-        </button>
-        <p class="reset-note">節目を迎えたら静かに初めから。</p>
-      </div>`
-    : "";
 
   return `<!DOCTYPE html>
 <html lang="ja">
@@ -182,6 +166,8 @@ const renderUserPage = ({ userId, stamps }) => {
         --accent: #6b5a46;
         --border: #d2c7b8;
         --stamp-fill: #3a2f27;
+        --ring-track: rgba(138, 111, 77, 0.2);
+        --ring-progress: #5b4a3a;
       }
       * {
         box-sizing: border-box;
@@ -198,10 +184,10 @@ const renderUserPage = ({ userId, stamps }) => {
         padding: 48px 20px;
       }
       main {
-        width: min(720px, 100%);
+        width: min(760px, 100%);
         background: rgba(255, 255, 255, 0.7);
         border: 1px solid var(--border);
-        border-radius: 20px;
+        border-radius: 24px;
         padding: 36px;
         box-shadow: 0 16px 30px rgba(0, 0, 0, 0.08);
       }
@@ -210,6 +196,7 @@ const renderUserPage = ({ userId, stamps }) => {
         flex-direction: column;
         gap: 8px;
         margin-bottom: 24px;
+        text-align: center;
       }
       h1 {
         font-size: 1.6rem;
@@ -220,54 +207,78 @@ const renderUserPage = ({ userId, stamps }) => {
         font-size: 0.95rem;
         color: #5d5246;
       }
-      .count {
-        display: inline-flex;
-        align-items: baseline;
-        gap: 8px;
-        padding: 10px 16px;
-        background: #fefaf2;
-        border: 1px solid var(--border);
-        border-radius: 999px;
-        font-weight: 600;
-      }
-      .count strong {
-        font-size: 1.4rem;
-        color: var(--accent);
-      }
-      .stamp-grid {
-        list-style: none;
-        padding: 0;
-        margin: 24px 0 0;
+      .ring-card {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
-        gap: 16px;
+        gap: 20px;
+        justify-items: center;
       }
-      .stamp {
-        width: 56px;
-        height: 56px;
-        border-radius: 50%;
-        border: 2px dashed var(--wood);
-        background: transparent;
+      .ring-wrapper {
         position: relative;
-      }
-      .stamp--filled {
-        border-style: solid;
-        background: radial-gradient(circle at 30% 30%, #6c5646, var(--stamp-fill));
-        box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.2);
-      }
-      .milestone {
-        margin: 18px 0 0;
-        font-size: 1rem;
-        color: var(--accent);
-      }
-      .milestone.muted {
-        color: #6b6258;
-      }
-      .reset-wrapper {
-        margin-top: 24px;
+        width: min(360px, 78vw);
+        aspect-ratio: 1;
         display: grid;
-        gap: 8px;
-        justify-items: start;
+        place-items: center;
+        --ring-size: min(360px, 78vw);
+        --ring-radius: calc(var(--ring-size) / 2 - 20px);
+      }
+      .progress-ring {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        transform: rotate(-90deg);
+      }
+      .ring-track {
+        fill: none;
+        stroke: var(--ring-track);
+        stroke-width: 14;
+      }
+      .ring-progress {
+        fill: none;
+        stroke: var(--ring-progress);
+        stroke-width: 14;
+        stroke-linecap: round;
+        transition: stroke-dashoffset 0.4s ease;
+      }
+      .ring-dots {
+        position: absolute;
+        inset: 0;
+      }
+      .ring-dot {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        border: 2px solid var(--wood);
+        background: transparent;
+        transform: translate(-50%, -50%)
+          rotate(calc(var(--index) * 27.692deg))
+          translateY(calc(-1 * var(--ring-radius)));
+        transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+      }
+      .ring-dot--filled {
+        border-color: var(--stamp-fill);
+        background: radial-gradient(circle at 30% 30%, #6c5646, var(--stamp-fill));
+        box-shadow: 0 0 0 3px rgba(58, 47, 39, 0.08);
+      }
+      .ring-center {
+        position: relative;
+        display: grid;
+        gap: 12px;
+        place-items: center;
+        text-align: center;
+        padding: 20px 24px;
+        background: rgba(255, 255, 255, 0.85);
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        min-width: 160px;
+      }
+      .center-count {
+        font-size: 1.4rem;
+        font-weight: 600;
+        color: var(--accent);
       }
       .reset-button {
         padding: 10px 18px;
@@ -279,78 +290,288 @@ const renderUserPage = ({ userId, stamps }) => {
         font-weight: 600;
         cursor: pointer;
       }
-      .reset-button:hover {
-        background: #f3ede4;
+      .reset-button:disabled {
+        cursor: wait;
+        opacity: 0.7;
       }
-      .reset-note {
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 12px;
+      }
+      .refresh-button {
+        padding: 10px 18px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: #fefaf2;
+        font-family: inherit;
+        font-weight: 600;
+        color: var(--accent);
+        cursor: pointer;
+      }
+      .refresh-button:disabled {
+        cursor: wait;
+        opacity: 0.7;
+      }
+      .toast {
+        min-height: 24px;
+        color: var(--accent);
+        font-weight: 600;
+        opacity: 0;
+        transform: translateY(-6px);
+        transition: opacity 0.3s ease, transform 0.3s ease;
+      }
+      .toast.toast--show {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .update-info {
+        margin-top: 28px;
+        border-top: 1px solid var(--border);
+        padding-top: 18px;
+        display: grid;
+        gap: 10px;
+      }
+      .update-info h2 {
+        font-size: 1rem;
         margin: 0;
-        font-size: 0.9rem;
-        color: #6b6258;
+      }
+      .event-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 6px;
+        font-size: 0.92rem;
+        color: #5d5246;
+      }
+      .event-item {
+        padding: 8px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: #fffaf2;
       }
       footer {
-        margin-top: 28px;
+        margin-top: 24px;
         font-size: 0.85rem;
         color: #75695c;
-      }
-      .note {
-        border-top: 1px solid var(--border);
-        padding-top: 16px;
       }
       @media (max-width: 560px) {
         main {
           padding: 24px;
         }
-        .stamp-grid {
-          grid-template-columns: repeat(auto-fit, minmax(48px, 1fr));
-          gap: 12px;
+        .ring-dot {
+          width: 14px;
+          height: 14px;
         }
-        .stamp {
-          width: 48px;
-          height: 48px;
+        .ring-center {
+          min-width: 140px;
         }
       }
     </style>
   </head>
   <body>
-    <main>
+    <main data-user-id="${userId}" data-stamps="${safeStamps}">
       <header>
         <h1>坐禅会スタンプカード</h1>
         <div class="subtle">利用者: ${userId}</div>
-        <div class="count"><strong id="stamp-count">${safeStamps}</strong> / 13</div>
       </header>
-      <div id="milestone">${milestoneMessage}</div>
-      ${resetButton}
-      <ul class="stamp-grid" aria-label="スタンプの進捗">
-        ${stampItems}
-      </ul>
-      <footer class="note">
+      <section class="ring-card" aria-label="スタンプ進捗リング">
+        <div class="ring-wrapper">
+          <svg class="progress-ring" viewBox="0 0 260 260" aria-hidden="true">
+            <circle class="ring-track" cx="130" cy="130" r="110"></circle>
+            <circle class="ring-progress" cx="130" cy="130" r="110"></circle>
+          </svg>
+          <div class="ring-dots">
+            ${ringDots}
+          </div>
+          <div class="ring-center">
+            <div class="center-count" id="center-count">${safeStamps} / 13</div>
+            <button class="reset-button" id="reset-button" type="button" hidden>
+              果報をうける
+            </button>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="refresh-button" id="refresh-button" type="button">更新</button>
+        </div>
+        <div class="toast" id="milestone-toast" role="status" aria-live="polite"></div>
+      </section>
+      <section class="update-info" aria-live="polite">
+        <div id="last-updated">最終更新: --</div>
+        <h2>直近3件</h2>
+        <ul class="event-list" id="recent-events"></ul>
+      </section>
+      <footer>
         静かな積み重ねを記録するカードです。
       </footer>
     </main>
     <script>
-      const resetButton = document.querySelector(".reset-button");
-      if (resetButton) {
-        resetButton.addEventListener("click", async () => {
-          resetButton.disabled = true;
-          resetButton.textContent = "処理中...";
-          try {
-            const response = await fetch("/api/reset", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ userId: resetButton.dataset.user }),
-            });
-            const data = await response.json();
-            if (!response.ok) {
-              throw new Error(data.error || "Failed to reset.");
-            }
-            window.location.reload();
-          } catch (error) {
-            resetButton.disabled = false;
-            resetButton.textContent = "果報をうける";
-            alert("リセットに失敗しました。");
-          }
+      const TOTAL_STAMPS = 13;
+      const main = document.querySelector("main");
+      const userId = main.dataset.userId;
+      const initialStamps = Number(main.dataset.stamps || 0);
+      const centerCount = document.getElementById("center-count");
+      const resetButton = document.getElementById("reset-button");
+      const refreshButton = document.getElementById("refresh-button");
+      const lastUpdated = document.getElementById("last-updated");
+      const recentEvents = document.getElementById("recent-events");
+      const milestoneToast = document.getElementById("milestone-toast");
+      const dots = Array.from(document.querySelectorAll(".ring-dot"));
+      const progressCircle = document.querySelector(".ring-progress");
+      const ringRadius = Number(progressCircle.getAttribute("r"));
+      const ringCircumference = 2 * Math.PI * ringRadius;
+      progressCircle.style.strokeDasharray = ringCircumference;
+      progressCircle.style.strokeDashoffset = ringCircumference;
+
+      let lastUpdatedAt;
+      let currentStamps = initialStamps;
+      let toastTimer = null;
+
+      const clamp = (value) => Math.min(TOTAL_STAMPS, Math.max(0, Number(value) || 0));
+
+      const formatDateTime = (iso) => {
+        if (!iso) {
+          return "未更新";
+        }
+        const date = new Date(iso);
+        if (Number.isNaN(date.getTime())) {
+          return iso;
+        }
+        return date.toLocaleString("ja-JP", { hour12: false });
+      };
+
+      const setToast = (message) => {
+        milestoneToast.textContent = message;
+        milestoneToast.classList.add("toast--show");
+        if (toastTimer) {
+          clearTimeout(toastTimer);
+        }
+        toastTimer = setTimeout(() => {
+          milestoneToast.classList.remove("toast--show");
+        }, 3000);
+      };
+
+      const renderEvents = (events = []) => {
+        recentEvents.innerHTML = "";
+        if (!events.length) {
+          const empty = document.createElement("li");
+          empty.className = "event-item";
+          empty.textContent = "履歴はまだありません。";
+          recentEvents.appendChild(empty);
+          return;
+        }
+        events.forEach((event) => {
+          const item = document.createElement("li");
+          item.className = "event-item";
+          item.textContent = event.eventType + " / " + event.reason + " / " + formatDateTime(event.createdAt);
+          recentEvents.appendChild(item);
         });
-      }
+      };
+
+      const render = (data, previousStamps) => {
+        const stamps = clamp(data.stamps);
+        const progress = stamps / TOTAL_STAMPS;
+        const offset = ringCircumference * (1 - progress);
+        progressCircle.style.strokeDashoffset = offset;
+        dots.forEach((dot, index) => {
+          dot.classList.toggle("ring-dot--filled", index < stamps);
+        });
+        centerCount.textContent = stamps + " / " + TOTAL_STAMPS;
+        if (stamps >= TOTAL_STAMPS) {
+          centerCount.hidden = true;
+          resetButton.hidden = false;
+        } else {
+          centerCount.hidden = false;
+          resetButton.hidden = true;
+        }
+        lastUpdated.textContent = "最終更新: " + formatDateTime(data.lastUpdatedAt);
+        renderEvents(data.recentEvents || []);
+
+        if (typeof previousStamps === "number") {
+          const milestones = [5, 10];
+          milestones.forEach((value) => {
+            const storageKey = "milestone_shown_" + value + "_" + userId;
+            if (previousStamps < value && stamps >= value && !localStorage.getItem(storageKey)) {
+              localStorage.setItem(storageKey, "true");
+              setToast(value + "個到達しました。");
+            }
+          });
+        }
+
+        currentStamps = stamps;
+        lastUpdatedAt = data.lastUpdatedAt || null;
+      };
+
+      const setRefreshState = (loading) => {
+        refreshButton.disabled = loading;
+        refreshButton.textContent = loading ? "更新中..." : "更新";
+      };
+
+      const fetchStatus = async ({ forceRender = false, showLoading = false } = {}) => {
+        if (showLoading) {
+          setRefreshState(true);
+        }
+        try {
+          const response = await fetch("/api/user/" + encodeURIComponent(userId));
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || "Failed to fetch status.");
+          }
+          const shouldRender =
+            forceRender ||
+            typeof lastUpdatedAt === "undefined" ||
+            data.lastUpdatedAt !== lastUpdatedAt;
+          if (shouldRender) {
+            render(data, currentStamps);
+          } else {
+            currentStamps = clamp(data.stamps);
+            lastUpdatedAt = data.lastUpdatedAt || null;
+          }
+        } catch (error) {
+          if (showLoading) {
+            alert("更新に失敗しました。");
+          }
+        } finally {
+          if (showLoading) {
+            setRefreshState(false);
+          }
+        }
+      };
+
+      resetButton.addEventListener("click", async () => {
+        resetButton.disabled = true;
+        resetButton.textContent = "処理中...";
+        try {
+          const response = await fetch("/api/reset", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId }),
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || "Failed to reset.");
+          }
+          render({ ...data, lastUpdatedAt: data.lastUpdatedAt || new Date().toISOString(), recentEvents: [] }, currentStamps);
+          await fetchStatus({ forceRender: true });
+        } catch (error) {
+          alert("リセットに失敗しました。");
+        } finally {
+          resetButton.disabled = false;
+          resetButton.textContent = "果報をうける";
+        }
+      });
+
+      refreshButton.addEventListener("click", () => {
+        fetchStatus({ forceRender: true, showLoading: true });
+      });
+
+      render({ stamps: currentStamps, lastUpdatedAt: null, recentEvents: [] });
+      fetchStatus({ forceRender: true });
+      setInterval(() => {
+        fetchStatus();
+      }, 5000);
     </script>
   </body>
 </html>`;
@@ -594,7 +815,33 @@ app.get("/admin", (req, res) => {
 app.get("/api/user/:id", async (req, res) => {
   try {
     const user = await getUser(req.params.id);
-    res.json({ id: user.id, stamps: user.stamps, isAdmin: user.isAdmin });
+    db.get(
+      "SELECT MAX(createdAt) AS lastUpdatedAt FROM stamp_events WHERE userId = ?",
+      [user.id],
+      (lastUpdatedErr, lastUpdatedRow) => {
+        if (lastUpdatedErr) {
+          res.status(500).json({ error: "Failed to load user status." });
+          return;
+        }
+        db.all(
+          "SELECT eventType, reason, createdAt FROM stamp_events WHERE userId = ? ORDER BY createdAt DESC LIMIT 3",
+          [user.id],
+          (eventsErr, eventRows) => {
+            if (eventsErr) {
+              res.status(500).json({ error: "Failed to load user status." });
+              return;
+            }
+            res.json({
+              id: user.id,
+              stamps: user.stamps,
+              isAdmin: user.isAdmin,
+              lastUpdatedAt: lastUpdatedRow ? lastUpdatedRow.lastUpdatedAt : null,
+              recentEvents: eventRows || [],
+            });
+          }
+        );
+      }
+    );
   } catch (error) {
     res.status(500).json({ error: "Failed to load user." });
   }
