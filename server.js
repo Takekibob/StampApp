@@ -25,8 +25,26 @@ db.serialize(() => {
   );
 
   db.run(
-    "CREATE TABLE IF NOT EXISTS stamp_events (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, createdAt TEXT NOT NULL, reason TEXT NOT NULL, FOREIGN KEY(userId) REFERENCES users(id))"
+    "CREATE TABLE IF NOT EXISTS stamp_events (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, createdAt TEXT NOT NULL, reason TEXT NOT NULL, eventType TEXT NOT NULL DEFAULT 'ADD', FOREIGN KEY(userId) REFERENCES users(id))"
   );
+
+  db.all("PRAGMA table_info(stamp_events)", (err, columns) => {
+    if (err) {
+      console.error("Failed to inspect stamp_events table:", err);
+      return;
+    }
+    const hasEventType = columns.some((column) => column.name === "eventType");
+    if (!hasEventType) {
+      db.run(
+        "ALTER TABLE stamp_events ADD COLUMN eventType TEXT NOT NULL DEFAULT 'ADD'",
+        (alterErr) => {
+          if (alterErr) {
+            console.error("Failed to add eventType column:", alterErr);
+          }
+        }
+      );
+    }
+  });
 
   // ① まずスキーマ確認
   db.all("PRAGMA table_info(users)", (err, columns) => {
@@ -133,6 +151,16 @@ const renderUserPage = ({ userId, stamps }) => {
       ? "<p class=\"milestone\">節目を迎えました</p>"
       : "<p class=\"milestone muted\">静かに積み重ねています</p>";
 
+  const showResetButton = safeStamps >= total;
+  const resetButton = showResetButton
+    ? `<div class="reset-wrapper">
+        <button class="reset-button" type="button" data-user="${userId}">
+          果報をうける
+        </button>
+        <p class="reset-note">節目を迎えたら静かに初めから。</p>
+      </div>`
+    : "";
+
   return `<!DOCTYPE html>
 <html lang="ja">
   <head>
@@ -235,6 +263,30 @@ const renderUserPage = ({ userId, stamps }) => {
       .milestone.muted {
         color: #6b6258;
       }
+      .reset-wrapper {
+        margin-top: 24px;
+        display: grid;
+        gap: 8px;
+        justify-items: start;
+      }
+      .reset-button {
+        padding: 10px 18px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: #f9f4ec;
+        font-family: inherit;
+        color: var(--accent);
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .reset-button:hover {
+        background: #f3ede4;
+      }
+      .reset-note {
+        margin: 0;
+        font-size: 0.9rem;
+        color: #6b6258;
+      }
       footer {
         margin-top: 28px;
         font-size: 0.85rem;
@@ -264,9 +316,10 @@ const renderUserPage = ({ userId, stamps }) => {
       <header>
         <h1>坐禅会スタンプカード</h1>
         <div class="subtle">利用者: ${userId}</div>
-        <div class="count"><strong>${safeStamps}</strong> / 13</div>
+        <div class="count"><strong id="stamp-count">${safeStamps}</strong> / 13</div>
       </header>
-      ${milestoneMessage}
+      <div id="milestone">${milestoneMessage}</div>
+      ${resetButton}
       <ul class="stamp-grid" aria-label="スタンプの進捗">
         ${stampItems}
       </ul>
@@ -274,6 +327,31 @@ const renderUserPage = ({ userId, stamps }) => {
         静かな積み重ねを記録するカードです。
       </footer>
     </main>
+    <script>
+      const resetButton = document.querySelector(".reset-button");
+      if (resetButton) {
+        resetButton.addEventListener("click", async () => {
+          resetButton.disabled = true;
+          resetButton.textContent = "処理中...";
+          try {
+            const response = await fetch("/api/reset", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ userId: resetButton.dataset.user }),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+              throw new Error(data.error || "Failed to reset.");
+            }
+            window.location.reload();
+          } catch (error) {
+            resetButton.disabled = false;
+            resetButton.textContent = "果報をうける";
+            alert("リセットに失敗しました。");
+          }
+        });
+      }
+    </script>
   </body>
 </html>`;
 };
@@ -443,10 +521,36 @@ app.get("/", (req, res) => {
   res.redirect("/user");
 });
 
+const parseCookies = (req) => {
+  const header = req.headers.cookie || "";
+  return header.split(";").reduce((acc, pair) => {
+    const trimmed = pair.trim();
+    if (!trimmed) {
+      return acc;
+    }
+    const index = trimmed.indexOf("=");
+    if (index === -1) {
+      return acc;
+    }
+    const key = decodeURIComponent(trimmed.slice(0, index));
+    const value = decodeURIComponent(trimmed.slice(index + 1));
+    acc[key] = value;
+    return acc;
+  }, {});
+};
+
 app.get("/user", async (req, res) => {
-  const userId = req.query.user || "guest";
+  const requestedUserId = req.query.user || "guest";
+  const cookies = parseCookies(req);
+  const lockedUserId = cookies.stampUserId || requestedUserId;
+  if (!cookies.stampUserId) {
+    res.setHeader(
+      "Set-Cookie",
+      `stampUserId=${encodeURIComponent(lockedUserId)}; Path=/; SameSite=Lax`
+    );
+  }
   try {
-    const user = await getUser(userId);
+    const user = await getUser(lockedUserId);
     res.status(200).send(
       renderUserPage({ userId: user.id, stamps: user.stamps })
     );
@@ -498,14 +602,46 @@ app.post("/api/admin/stamp", adminGuard, (req, res) => {
             }
             const safeStamps = clampStamps(row.stamps);
             db.run(
-              "INSERT INTO stamp_events (userId, createdAt, reason) VALUES (?, ?, ?)",
-              [userId, new Date().toISOString(), "admin_grant"]
+              "INSERT INTO stamp_events (userId, createdAt, reason, eventType) VALUES (?, ?, ?, ?)",
+              [userId, new Date().toISOString(), "admin_grant", "ADD"]
             );
             res.json({ id: row.id, stamps: safeStamps });
           }
         );
       }
     );
+  });
+});
+
+app.post("/api/reset", async (req, res) => {
+  const cookies = parseCookies(req);
+  const userId = cookies.stampUserId;
+  if (!userId) {
+    res.status(401).json({ error: "User is not identified." });
+    return;
+  }
+  if (req.body.userId && req.body.userId !== userId) {
+    res.status(403).json({ error: "User mismatch." });
+    return;
+  }
+  try {
+    await getUser(userId);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to load user." });
+    return;
+  }
+  db.serialize(() => {
+    db.run("UPDATE users SET stamps = 0 WHERE id = ?", [userId], (err) => {
+      if (err) {
+        res.status(500).json({ error: "Failed to reset stamps." });
+        return;
+      }
+      db.run(
+        "INSERT INTO stamp_events (userId, createdAt, reason, eventType) VALUES (?, ?, ?, ?)",
+        [userId, new Date().toISOString(), "user_reset", "RESET"]
+      );
+      res.json({ id: userId, stamps: 0 });
+    });
   });
 });
 
