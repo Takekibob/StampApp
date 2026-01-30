@@ -23,31 +23,51 @@ db.serialize(() => {
   db.run(
     "CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, stamps INTEGER NOT NULL DEFAULT 0, isAdmin INTEGER NOT NULL DEFAULT 0)"
   );
+
   db.run(
     "CREATE TABLE IF NOT EXISTS stamp_events (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, createdAt TEXT NOT NULL, reason TEXT NOT NULL, FOREIGN KEY(userId) REFERENCES users(id))"
   );
+
+  // ① まずスキーマ確認
   db.all("PRAGMA table_info(users)", (err, columns) => {
     if (err) {
       console.error("Failed to inspect users table:", err);
       return;
     }
+
     const hasIsAdmin = columns.some((column) => column.name === "isAdmin");
+
+    const ensureAdminUser = () => {
+      // ③ isAdmin列が存在する状態で admin を作る
+      db.run(
+        "INSERT OR IGNORE INTO users (id, stamps, isAdmin) VALUES (?, 0, 1)",
+        [ADMIN_USER_ID],
+        (insertErr) => {
+          if (insertErr) {
+            console.error("Failed to ensure admin user:", insertErr);
+          }
+        }
+      );
+    };
+
     if (!hasIsAdmin) {
+      // ② 列が無ければ追加 → 終わったら admin作成
       db.run(
         "ALTER TABLE users ADD COLUMN isAdmin INTEGER NOT NULL DEFAULT 0",
         (alterErr) => {
           if (alterErr) {
             console.error("Failed to add isAdmin column:", alterErr);
+            return;
           }
+          ensureAdminUser();
         }
       );
+    } else {
+      ensureAdminUser();
     }
   });
-  db.run(
-    "INSERT OR IGNORE INTO users (id, stamps, isAdmin) VALUES (?, 0, 1)",
-    [ADMIN_USER_ID]
-  );
 });
+
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
