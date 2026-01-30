@@ -539,25 +539,53 @@ const parseCookies = (req) => {
   }, {});
 };
 
+// app.get("/user", async (req, res) => {
+//   const requestedUserId = req.query.user || "guest";
+//   const cookies = parseCookies(req);
+//   const lockedUserId = cookies.stampUserId || requestedUserId;
+//   if (!cookies.stampUserId) {
+//     res.setHeader(
+//       "Set-Cookie",
+//       `stampUserId=${encodeURIComponent(lockedUserId)}; Path=/; SameSite=Lax`
+//     );
+//   }
+//   try {
+//     const user = await getUser(lockedUserId);
+//     res.status(200).send(
+//       renderUserPage({ userId: user.id, stamps: user.stamps })
+//     );
+//   } catch (error) {
+//     res.status(500).send("Internal Server Error");
+//   }
+// });
+
 app.get("/user", async (req, res) => {
-  const requestedUserId = req.query.user || "guest";
   const cookies = parseCookies(req);
-  const lockedUserId = cookies.stampUserId || requestedUserId;
-  if (!cookies.stampUserId) {
+
+  // クエリで user が指定されたら、それを優先して Cookie も更新（=ユーザー切替）
+  const queryUserId = typeof req.query.user === "string" ? req.query.user : "";
+  const hasQuery = Boolean(queryUserId);
+
+  const userId = hasQuery
+    ? queryUserId
+    : (cookies.stampUserId || "guest");
+
+  // Cookie が無い場合 or クエリ指定で切替が発生した場合は Cookie を更新
+  if (!cookies.stampUserId || hasQuery) {
     res.setHeader(
       "Set-Cookie",
-      `stampUserId=${encodeURIComponent(lockedUserId)}; Path=/; SameSite=Lax`
+      `stampUserId=${encodeURIComponent(userId)}; Path=/; SameSite=Lax`
     );
   }
+
   try {
-    const user = await getUser(lockedUserId);
-    res.status(200).send(
-      renderUserPage({ userId: user.id, stamps: user.stamps })
-    );
+    const user = await getUser(userId);
+    res.status(200).send(renderUserPage({ userId: user.id, stamps: user.stamps }));
   } catch (error) {
     res.status(500).send("Internal Server Error");
   }
 });
+
 
 app.get("/admin", (req, res) => {
   res.status(200).send(renderAdminPage());
