@@ -5,6 +5,7 @@
 ## できること
 - ユーザー画面で 0〜13 のスタンプ枠と現在数を表示
 - 13 個到達時に静かな節目表示
+- 13 個到達時のみ「果報をうける」ボタンを表示し、押下でスタンプを 0 に戻して再スタート
 - 管理者画面で特定ユーザーにスタンプを +1 付与（上限 13）
 - 管理者 API で特定ユーザーにスタンプを +1 付与（上限 13）
 - SQLite にユーザー ID / スタンプ数 / 管理者フラグを永続化
@@ -55,6 +56,7 @@ curl -X POST http://localhost:3000/api/admin/stamp \
 - `GET /admin`: 管理者ページを表示
 - `GET /api/user/:id`: ユーザーの現在スタンプ数を取得
 - `POST /api/admin/stamp`: 指定ユーザーにスタンプを +1 付与（上限 13）
+- `POST /api/reset`: 現在のユーザーのスタンプを 0 にリセット
 
 ## DB スキーマ
 
@@ -71,7 +73,8 @@ CREATE TABLE stamp_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   userId TEXT NOT NULL,
   createdAt TEXT NOT NULL,
-  reason TEXT NOT NULL
+  reason TEXT NOT NULL,
+  eventType TEXT NOT NULL DEFAULT 'ADD'
 );
 ```
 
@@ -79,4 +82,4 @@ CREATE TABLE stamp_events (
 - 認証は管理者 API に `ADMIN_TOKEN` を付与する簡易方式
 - `isAdmin` は「管理者用のユーザーを区別する」ためのフラグとして利用し、API の最終的な認可は `ADMIN_TOKEN` で行う
 - 初期管理者ユーザーは `ADMIN_USER_ID`（未指定時は `admin`）として作成される
-- ユーザー識別は URL クエリ `?user=` を利用
+- ユーザー識別は URL クエリ `?user=` を利用し、初回アクセス時に同じユーザー ID を cookie に固定する
