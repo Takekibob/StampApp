@@ -5,8 +5,9 @@
 ## できること
 - ユーザー画面で 0〜13 のスタンプ枠と現在数を表示
 - 13 個到達時に静かな節目表示
+- 管理者画面で特定ユーザーにスタンプを +1 付与（上限 13）
 - 管理者 API で特定ユーザーにスタンプを +1 付与（上限 13）
-- SQLite にユーザー ID とスタンプ数を永続化
+- SQLite にユーザー ID / スタンプ数 / 管理者フラグを永続化
 
 ## セットアップ
 
@@ -16,10 +17,13 @@ npm install
 
 ### 環境変数
 
-管理者 API 用のトークンを設定してください。
+管理者 API 用のトークンを `.env` に設定してください。
 
 ```bash
-export ADMIN_TOKEN="your-secret-token"
+cat <<EOF > .env
+ADMIN_TOKEN=your-secret-token
+ADMIN_USER_ID=admin
+EOF
 ```
 
 ### 起動
@@ -28,9 +32,15 @@ export ADMIN_TOKEN="your-secret-token"
 npm run dev
 ```
 
-ブラウザで `http://localhost:3000/?user=your-id` を開くとユーザー画面を確認できます。
+ブラウザで `http://localhost:3000/user?user=your-id` を開くとユーザー画面を確認できます。
+管理者画面は `http://localhost:3000/admin` です。
 
-## 管理者操作（スタンプ付与）
+## 管理者操作（画面 / API）
+
+### 管理者画面
+`/admin` でユーザー ID と管理者トークンを入力し、付与結果を確認できます。
+
+### 管理者 API（スタンプ付与）
 
 ```bash
 curl -X POST http://localhost:3000/api/admin/stamp \
@@ -41,7 +51,8 @@ curl -X POST http://localhost:3000/api/admin/stamp \
 
 ## API
 
-- `GET /?user=<id>`: スタンプカード画面を表示
+- `GET /user?user=<id>`: ユーザー用スタンプカード画面を表示
+- `GET /admin`: 管理者ページを表示
 - `GET /api/user/:id`: ユーザーの現在スタンプ数を取得
 - `POST /api/admin/stamp`: 指定ユーザーにスタンプを +1 付与（上限 13）
 
@@ -52,10 +63,20 @@ SQLite: `data/stamps.db`
 ```sql
 CREATE TABLE users (
   id TEXT PRIMARY KEY,
-  stamps INTEGER NOT NULL DEFAULT 0
+  stamps INTEGER NOT NULL DEFAULT 0,
+  isAdmin INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE stamp_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  userId TEXT NOT NULL,
+  createdAt TEXT NOT NULL,
+  reason TEXT NOT NULL
 );
 ```
 
 ## MVP 前提の補足（仮定）
 - 認証は管理者 API に `ADMIN_TOKEN` を付与する簡易方式
+- `isAdmin` は「管理者用のユーザーを区別する」ためのフラグとして利用し、API の最終的な認可は `ADMIN_TOKEN` で行う
+- 初期管理者ユーザーは `ADMIN_USER_ID`（未指定時は `admin`）として作成される
 - ユーザー識別は URL クエリ `?user=` を利用

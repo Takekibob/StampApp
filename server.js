@@ -9,6 +9,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
+const ADMIN_USER_ID = process.env.ADMIN_USER_ID || "admin";
 
 const dbDir = path.join(__dirname, "data");
 if (!fs.existsSync(dbDir)) {
@@ -20,36 +21,70 @@ const db = new sqlite3.Database(dbPath);
 
 db.serialize(() => {
   db.run(
-    "CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, stamps INTEGER NOT NULL DEFAULT 0)"
+    "CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, stamps INTEGER NOT NULL DEFAULT 0, isAdmin INTEGER NOT NULL DEFAULT 0)"
+  );
+  db.run(
+    "CREATE TABLE IF NOT EXISTS stamp_events (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, createdAt TEXT NOT NULL, reason TEXT NOT NULL, FOREIGN KEY(userId) REFERENCES users(id))"
+  );
+  db.all("PRAGMA table_info(users)", (err, columns) => {
+    if (err) {
+      console.error("Failed to inspect users table:", err);
+      return;
+    }
+    const hasIsAdmin = columns.some((column) => column.name === "isAdmin");
+    if (!hasIsAdmin) {
+      db.run(
+        "ALTER TABLE users ADD COLUMN isAdmin INTEGER NOT NULL DEFAULT 0",
+        (alterErr) => {
+          if (alterErr) {
+            console.error("Failed to add isAdmin column:", alterErr);
+          }
+        }
+      );
+    }
+  });
+  db.run(
+    "INSERT OR IGNORE INTO users (id, stamps, isAdmin) VALUES (?, 0, 1)",
+    [ADMIN_USER_ID]
   );
 });
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+const clampStamps = (stamps) => Math.min(13, Math.max(0, stamps));
+
 const getUser = (id) =>
   new Promise((resolve, reject) => {
-    db.get("SELECT id, stamps FROM users WHERE id = ?", [id], (err, row) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      if (row) {
-        resolve(row);
-        return;
-      }
-      db.run(
-        "INSERT INTO users (id, stamps) VALUES (?, 0)",
-        [id],
-        (insertErr) => {
-          if (insertErr) {
-            reject(insertErr);
-            return;
-          }
-          resolve({ id, stamps: 0 });
+    db.get(
+      "SELECT id, stamps, isAdmin FROM users WHERE id = ?",
+      [id],
+      (err, row) => {
+        if (err) {
+          reject(err);
+          return;
         }
-      );
-    });
+        if (row) {
+          resolve({
+            id: row.id,
+            stamps: clampStamps(row.stamps),
+            isAdmin: Boolean(row.isAdmin),
+          });
+          return;
+        }
+        db.run(
+          "INSERT INTO users (id, stamps, isAdmin) VALUES (?, 0, 0)",
+          [id],
+          (insertErr) => {
+            if (insertErr) {
+              reject(insertErr);
+              return;
+            }
+            resolve({ id, stamps: 0, isAdmin: false });
+          }
+        );
+      }
+    );
   });
 
 const adminGuard = (req, res, next) => {
@@ -57,7 +92,7 @@ const adminGuard = (req, res, next) => {
     res.status(500).json({ error: "ADMIN_TOKEN is not configured." });
     return;
   }
-  const token = req.header("x-admin-token") || req.body?.token || "";
+  const token = req.header("x-admin-token") || "";
   if (token !== ADMIN_TOKEN) {
     res.status(401).json({ error: "Unauthorized." });
     return;
@@ -65,15 +100,16 @@ const adminGuard = (req, res, next) => {
   next();
 };
 
-const renderPage = ({ userId, stamps }) => {
+const renderUserPage = ({ userId, stamps }) => {
   const total = 13;
+  const safeStamps = clampStamps(stamps);
   const stampItems = Array.from({ length: total }, (_, index) => {
-    const filled = index < stamps;
+    const filled = index < safeStamps;
     return `<li class="stamp ${filled ? "stamp--filled" : ""}" aria-hidden="true"></li>`;
   }).join("");
 
   const milestoneMessage =
-    stamps >= total
+    safeStamps >= total
       ? "<p class=\"milestone\">節目を迎えました</p>"
       : "<p class=\"milestone muted\">静かに積み重ねています</p>";
 
@@ -208,7 +244,7 @@ const renderPage = ({ userId, stamps }) => {
       <header>
         <h1>坐禅会スタンプカード</h1>
         <div class="subtle">利用者: ${userId}</div>
-        <div class="count"><strong>${stamps}</strong> / 13</div>
+        <div class="count"><strong>${safeStamps}</strong> / 13</div>
       </header>
       ${milestoneMessage}
       <ul class="stamp-grid" aria-label="スタンプの進捗">
@@ -222,20 +258,191 @@ const renderPage = ({ userId, stamps }) => {
 </html>`;
 };
 
-app.get("/", async (req, res) => {
+const renderAdminPage = () => `<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>管理者スタンプ付与</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        color-scheme: light;
+        --paper: #f6f1e7;
+        --ink: #2f2a24;
+        --border: #d2c7b8;
+        --accent: #6b5a46;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: "Noto Serif JP", serif;
+        background: var(--paper);
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 48px 20px;
+      }
+      main {
+        width: min(560px, 100%);
+        background: rgba(255, 255, 255, 0.7);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 32px;
+        box-shadow: 0 16px 30px rgba(0, 0, 0, 0.08);
+      }
+      header {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 20px;
+      }
+      h1 {
+        font-size: 1.4rem;
+        margin: 0;
+        letter-spacing: 0.05em;
+      }
+      .subtle {
+        font-size: 0.95rem;
+        color: #5d5246;
+      }
+      form {
+        display: grid;
+        gap: 16px;
+        margin-top: 16px;
+      }
+      label {
+        display: grid;
+        gap: 6px;
+        font-size: 0.9rem;
+      }
+      input {
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        font-family: inherit;
+      }
+      button {
+        padding: 12px 16px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: #fefaf2;
+        font-family: inherit;
+        font-weight: 600;
+        color: var(--accent);
+        cursor: pointer;
+      }
+      .result {
+        margin-top: 18px;
+        padding: 14px 16px;
+        border-radius: 14px;
+        background: #fff7ea;
+        border: 1px solid var(--border);
+        min-height: 52px;
+      }
+      .result strong {
+        color: var(--accent);
+      }
+      .error {
+        color: #9d3c2f;
+      }
+      footer {
+        margin-top: 20px;
+        font-size: 0.85rem;
+        color: #75695c;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>管理者スタンプ付与</h1>
+        <div class="subtle">管理者ID: ${ADMIN_USER_ID}</div>
+      </header>
+      <form id="stamp-form">
+        <label>
+          対象ユーザーID
+          <input name="userId" type="text" required placeholder="user-001" />
+        </label>
+        <label>
+          管理者トークン
+          <input name="token" type="password" required placeholder="ADMIN_TOKEN" />
+        </label>
+        <button type="submit">スタンプを付与する</button>
+      </form>
+      <div class="result" id="result" aria-live="polite">
+        <span class="subtle">入力を送信すると結果が表示されます。</span>
+      </div>
+      <footer>管理者 API を通じてスタンプを付与します。</footer>
+    </main>
+    <script>
+      const form = document.getElementById("stamp-form");
+      const result = document.getElementById("result");
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const formData = new FormData(form);
+        const userId = formData.get("userId");
+        const token = formData.get("token");
+        result.innerHTML = "<span class=\\"subtle\\">処理中...</span>";
+        try {
+          const response = await fetch("/api/admin/stamp", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-admin-token": token,
+            },
+            body: JSON.stringify({ userId }),
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            result.innerHTML = "<span class=\\"error\\">" + data.error + "</span>";
+            return;
+          }
+          result.innerHTML =
+            "現在のスタンプ数: <strong>" + data.stamps + "</strong> / 13";
+        } catch (error) {
+          result.innerHTML =
+            "<span class=\\"error\\">通信に失敗しました。</span>";
+        }
+      });
+    </script>
+  </body>
+</html>`;
+
+app.get("/", (req, res) => {
+  res.redirect("/user");
+});
+
+app.get("/user", async (req, res) => {
   const userId = req.query.user || "guest";
   try {
     const user = await getUser(userId);
-    res.status(200).send(renderPage({ userId: user.id, stamps: user.stamps }));
+    res.status(200).send(
+      renderUserPage({ userId: user.id, stamps: user.stamps })
+    );
   } catch (error) {
     res.status(500).send("Internal Server Error");
   }
 });
 
+app.get("/admin", (req, res) => {
+  res.status(200).send(renderAdminPage());
+});
+
 app.get("/api/user/:id", async (req, res) => {
   try {
     const user = await getUser(req.params.id);
-    res.json({ id: user.id, stamps: user.stamps });
+    res.json({ id: user.id, stamps: user.stamps, isAdmin: user.isAdmin });
   } catch (error) {
     res.status(500).json({ error: "Failed to load user." });
   }
@@ -269,7 +476,12 @@ app.post("/api/admin/stamp", adminGuard, (req, res) => {
               res.status(500).json({ error: "Failed to fetch user." });
               return;
             }
-            res.json({ id: row.id, stamps: row.stamps });
+            const safeStamps = clampStamps(row.stamps);
+            db.run(
+              "INSERT INTO stamp_events (userId, createdAt, reason) VALUES (?, ?, ?)",
+              [userId, new Date().toISOString(), "admin_grant"]
+            );
+            res.json({ id: row.id, stamps: safeStamps });
           }
         );
       }
