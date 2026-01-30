@@ -64,6 +64,13 @@ input {
   border: 1px solid var(--border);
   font-family: inherit;
 }
+textarea {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  font-family: inherit;
+  resize: vertical;
+}
 button {
   padding: 12px 16px;
   border-radius: 999px;
@@ -73,6 +80,73 @@ button {
   font-weight: 600;
   color: var(--accent);
   cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fefaf2;
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+.button--ghost {
+  background: transparent;
+}
+.button--google {
+  background: #fff6ec;
+}
+.form-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.auth-links {
+  margin-top: 16px;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
+  font-size: 0.9rem;
+}
+.auth-links a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.divider {
+  color: #9c8f82;
+}
+.section-divider {
+  text-align: center;
+  margin: 20px 0 12px;
+  font-size: 0.9rem;
+  color: #7a6f63;
+}
+.oauth-block {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+.notice {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #f6efe6;
+  color: #5d5246;
+}
+.helper-text {
+  font-size: 0.85rem;
+  color: #7a6f63;
+  text-align: center;
 }
 .result {
   margin-top: 18px;
@@ -87,6 +161,10 @@ button {
 }
 .error {
   color: #9d3c2f;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #e4c8c1;
+  background: #fff3f0;
 }
 footer {
   margin-top: 20px;
@@ -107,6 +185,21 @@ main[data-user-id] header {
   gap: 8px;
   margin-bottom: 24px;
   text-align: center;
+}
+main[data-user-id] .header-top {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+main[data-user-id] .header-links {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+main[data-user-id] .header-links a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.9rem;
 }
 main[data-user-id] h1 {
   font-size: 1.6rem;
@@ -266,6 +359,10 @@ main[data-user-id] footer {
 @media (max-width: 560px) {
   main[data-user-id] {
     padding: 24px;
+  }
+  .form-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
   .ring-dot {
     width: 14px;
